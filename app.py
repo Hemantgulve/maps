@@ -96,10 +96,32 @@ COORDS = {
 # ---------------------------------------------------------
 # 2. Load Local India States GeoJSON from Repo
 # ---------------------------------------------------------
+import urllib.request
+
 @st.cache_data
 def load_india_states_geojson():
-    geojson_path = os.path.join(os.path.dirname(__file__), "india_states.geojson")
-    gdf = gpd.read_file(geojson_path)
+    geojson_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "india_states.geojson")
+    raw_url = (
+        "https://gist.githubusercontent.com/jbrobst/56c13bbbf9d97d187fea01ca62ea5112/raw/"
+        "e388c4cae20aa53cb5090210a42ebb9b765c0a36/india_states.geojson"
+    )
+
+    gdf = None
+    if os.path.exists(geojson_path) and os.path.getsize(geojson_path) > 100:
+        try:
+            gdf = gpd.read_file(geojson_path)
+        except Exception:
+            gdf = None
+
+    if gdf is None or gdf.empty:
+        with urllib.request.urlopen(raw_url, timeout=20) as resp:
+            geojson_text = resp.read().decode("utf-8")
+        # Cache locally in /tmp so subsequent reruns don't re-download
+        tmp_path = "/tmp/india_states.geojson"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(geojson_text)
+        gdf = gpd.read_file(tmp_path)
+
     name_map = {
         "Andaman & Nicobar Island": "Andaman & Nicobar",
         "Arunanchal Pradesh": "Arunachal Pradesh",
@@ -110,7 +132,8 @@ def load_india_states_geojson():
         "Pondicherry": "Puducherry",
         "Uttaranchal": "Uttarakhand",
     }
-    gdf["Clean_State"] = gdf["ST_NM"].replace(name_map)
+    state_col = "ST_NM" if "ST_NM" in gdf.columns else gdf.columns[0]
+    gdf["Clean_State"] = gdf[state_col].replace(name_map)
     return gdf
 
 # ---------------------------------------------------------
